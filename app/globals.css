@@ -1,0 +1,167 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Brand tokens ("R G B"). The public site overrides them from the active workspace. */
+:root {
+  --brand: 124 92 255;
+  --brand-2: 34 211 238;
+  --accent: 244 114 182;
+  --bg: 7 9 18;
+  --surface: 15 19 34;
+  --ink: 232 235 247;
+  --highlight: #22d3ee;
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+[id] {
+  scroll-margin-top: 88px;
+}
+
+/* Native dropdown lists (Chrome/Edge on Windows draw them on a white popup unless told otherwise). */
+select {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background-color: rgb(var(--surface));
+  color: rgb(var(--ink));
+}
+select option:checked {
+  background-color: rgb(var(--brand) / 0.55);
+  color: #fff;
+}
+select option:disabled {
+  color: rgb(var(--ink) / 0.4);
+}
+
+::selection {
+  background: rgb(var(--brand) / 0.45);
+}
+
+@layer components {
+  .container-x {
+    @apply mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8;
+  }
+  .card {
+    @apply rounded-2xl border border-white/[0.08] bg-surface/80 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset];
+  }
+  .glass {
+    @apply border border-white/10 bg-white/[0.04] backdrop-blur-xl;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand2/70 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-brand to-brand2 text-white shadow-[0_8px_30px_-8px_rgb(var(--brand)/0.7)] hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-white/15 bg-white/[0.03] text-ink hover:bg-white/[0.08];
+  }
+  .btn-wa {
+    @apply btn bg-[#25d366] text-black hover:brightness-110;
+  }
+  .field {
+    @apply w-full rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-[15px] text-ink outline-none transition placeholder:text-white/35 focus:border-brand2/70 focus:bg-white/[0.06] focus:ring-2 focus:ring-brand2/20;
+  }
+  .label {
+    @apply mb-1.5 block text-[13px] font-medium text-white/75;
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[12px] font-semibold uppercase tracking-[0.14em] text-brand2;
+  }
+  .h-display {
+    @apply font-head font-extrabold tracking-[-0.035em] text-white;
+  }
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand via-brand2 to-accent bg-clip-text text-transparent;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[12px] font-medium text-white/80;
+  }
+}
+
+/* Assistant visual feedback: the element the assistant is talking about. */
+.ai-highlight {
+  position: relative;
+  outline: 2px solid var(--highlight) !important;
+  outline-offset: 4px;
+  border-radius: 16px;
+  animation: aiPulse 1.2s ease-in-out 2;
+  z-index: 1;
+}
+@keyframes aiPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--highlight) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--highlight) 0%, transparent), 0 0 40px color-mix(in srgb, var(--highlight) 35%, transparent);
+  }
+}
+
+/* Entrance animation for sections (Developer › Site › section animation). */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+.bg-grid {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 20%, transparent 70%);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .ai-highlight {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

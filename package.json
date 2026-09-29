@@ -1,0 +1,39 @@
+{
+  "name": "website-webapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reusable AI voice-controlled business web app: voice + text sales assistant, website action layer, CRM, analytics, /admin and /developer areas",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:reset": "node scripts/reset-db.mjs",
+    "db:check": "node scripts/db-check.mjs",
+    "hash-password": "node scripts/hash-password.mjs",
+    "reset-admin": "node scripts/reset-admin.mjs",
+    "reset-developer": "node scripts/reset-developer.mjs"
+  },
+  "engines": {
+    "node": ">=20.9"
+  },
+  "dependencies": {
+    "@google/genai": "^1.30.0",
+    "next": "^15.5.4",
+    "nodemailer": "^7.0.6",
+    "postgres": "^3.4.9",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "@types/nodemailer": "^7.0.1",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.2"
+  }
+}
