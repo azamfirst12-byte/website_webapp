@@ -15,5 +15,5 @@ git branch -M main
 # 5. Link your local repository to GitHub
 git remote add origin https://github.com/azamfirst12-byte/website_webapp.git
 
-# 6. Push your code to GitHub
+# 6. Push your code to GitHub confirm itgit push -u origin main --force
 git push -u origin main
