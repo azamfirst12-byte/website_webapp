@@ -1,0 +1,19 @@
+# 1. Initialize git if you haven't already
+git init
+git remote -v
+
+
+# 2. Add all your project files to staging
+git add .
+
+# 3. Commit your changes with a message
+git commit -m "Initial commit"
+
+# 4. Set your main branch (if it isn't already)
+git branch -M main
+
+# 5. Link your local repository to GitHub
+git remote add origin https://github.com/azamfirst12-byte/website_webapp.git
+
+# 6. Push your code to GitHub
+git push -u origin main
