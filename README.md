@@ -164,3 +164,4 @@ In development, the browser console has `window.__assistant.run('scroll_to_secti
 - Set a strong `AUTH_SECRET` and different admin/developer passwords. Leave `ADMIN_INVITE_CODE` empty and set `ADMIN_SHOW_ACCOUNTS=off`.
 - Set `LIVE_SESSIONS_PER_IP_PER_HOUR` to a sensible value, and check the Live model id with *Test Gemini connection*.
 - Replace the privacy page text. Voice audio and conversations are processed by Google's Gemini API.
+# website_webapp
