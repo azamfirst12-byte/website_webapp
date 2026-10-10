@@ -9,6 +9,7 @@ import { AdminNav, type NavItem } from '@/components/admin/AdminNav';
 import { NotificationBell } from '@/components/admin/NotificationBell';
 import { SignOutButton } from '@/components/admin/AuthForms';
 import { DemoBanner } from '@/components/admin/DemoData';
+import { AdminAssistant } from '@/components/admin/assistant/AdminAssistant';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: { default: 'Admin', template: '%s · Admin' }, robots: { index: false } };
@@ -57,6 +58,7 @@ export default async function PanelLayout({ children }: { children: ReactNode })
           {children}
         </main>
       </div>
+      <AdminAssistant name={ws.config.assistant.name} userName={session.user.name} />
     </div>
   );
 }

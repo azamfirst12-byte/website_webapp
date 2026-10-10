@@ -153,15 +153,23 @@ export function useGeminiLive(hooks: LiveHooks) {
         callbacks: {
           onmessage: (m: LiveServerMessage) => void onMessage(m),
           onerror: (e: ErrorEvent) => console.warn('live error', e.message),
-          onclose: () => {
+          onclose: (ev: CloseEvent) => {
             if (closing.current || !s || session.current !== s) return;
             session.current = null;
+            const reason = (ev?.reason ?? '').trim();
+            if (reason) console.warn('[assistant] live connection closed', ev.code, reason);
+            // Billing / quota / key problems won't fix themselves on retry: say what Google said.
+            if (/credit|billing|quota|exhausted|exceeded|api key|permission|denied/i.test(reason)) {
+              setStatus('error');
+              setError(/credit|billing/i.test(reason) ? 'Voice is unavailable: the Gemini account is out of credit (AI Studio → Billing).' : `Voice is unavailable: ${reason.slice(0, 140)}`);
+              return;
+            }
             if (retries.current < 4 && handle.current) {
               retries.current += 1;
               setTimeout(() => connectRef.current(true).catch(fail), 400 * retries.current);
             } else {
               setStatus('error');
-              setError('Connection lost. Tap the mic to reconnect.');
+              setError(reason ? `Connection lost (${reason.slice(0, 120)}). Tap the mic to reconnect.` : 'Connection lost. Tap the mic to reconnect.');
             }
           },
         },

@@ -140,32 +140,57 @@ export function ContactForm() {
   );
 }
 
+/** Business WhatsApp number (digits only): Developer › Brand, else NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER. */
+function businessWhatsApp(brandNumber?: string | null) {
+  return (brandNumber || process.env.NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER || '').replace(/\D/g, '');
+}
+
 export function BookingForm({ compact = false }: { compact?: boolean }) {
-  const { ws } = useSite();
-  const { v, set, sent, setSent, setLeadId, reset } = useFormState('booking');
+  const { ws, modal, closeModal } = useSite();
+  const { v, set, setSent, setLeadId, reset } = useFormState('booking');
   const { setForm } = useSite();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [consent, setConsent] = useState(false);
-  if (sent)
-    return (
-      <Sent
-        text={`Your consultation request${v.preferred_time ? ` for ${v.preferred_time}` : ''} is in. We'll confirm the time by email or WhatsApp shortly.`}
-        onAgain={() => (reset(), setSent(false))}
-      />
-    );
+  const waNumber = businessWhatsApp(ws.brand.whatsapp);
+  const topic = ws.services.find((x) => x.slug === v.service)?.name ?? 'General consultation';
+
+  // The exact WhatsApp message, built live from the form.
+  const message = [
+    `Hi ${ws.brand.name}, I'd like to book a free ${ws.booking.durationMin}-minute consultation.`,
+    '',
+    `Name: ${v.name?.trim() || '—'}`,
+    v.email?.trim() ? `Email: ${v.email.trim()}` : null,
+    v.phone?.trim() ? `Phone: ${v.phone.trim()}` : null,
+    `Topic: ${topic}`,
+    `Preferred time: ${v.preferred_time?.trim() || '—'}`,
+    v.message?.trim() ? `Notes: ${v.message.trim()}` : null,
+  ]
+    .filter((l): l is string => l !== null)
+    .join('\n');
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     if (!v.email && !v.phone) return setError('Please add an email or phone number so we can confirm.');
     if (!consent) return setError('Please tick the box so we can contact you.');
+    // Open the WhatsApp tab right away (inside the click) so pop-up blockers allow it; fill it in after saving.
+    const win = waNumber ? window.open('', '_blank') : null;
     setBusy(true);
     try {
       const d = await submitForm('booking', { ...v, consent: 'yes' });
       setLeadId(d.leadId);
-      setSent(true);
+      setSent(false);
+      if (waNumber) {
+        const url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
+        if (win) win.location.href = url;
+        else window.location.href = url;
+      }
+      reset();
+      setConsent(false);
+      if (modal?.kind === 'booking') closeModal();
     } catch (err) {
+      win?.close();
       setError((err as Error).message);
     } finally {
       setBusy(false);
@@ -173,6 +198,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
   };
 
   const quick = ['Tomorrow morning', 'Tomorrow afternoon', 'This week', 'Next week'];
+  const full = compact ? '' : 'sm:col-span-2';
   return (
     <form data-form="booking" aria-label="Consultation booking form" onSubmit={onSubmit} className={`grid gap-4 ${compact ? '' : 'sm:grid-cols-2'}`}>
       <Field label="Your name *">
@@ -194,7 +220,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
           ))}
         </select>
       </Field>
-      <div className={compact ? '' : 'sm:col-span-2'}>
+      <div className={full}>
         <Field label="Preferred day & time *">
           <input name="preferred_time" required value={v.preferred_time ?? ''} onChange={set('preferred_time')} className="field" placeholder="e.g. Thursday 3pm" />
         </Field>
@@ -209,22 +235,36 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
           {ws.booking.durationMin} min · {ws.booking.meetingType} · {ws.booking.availability}
         </p>
       </div>
-      <Field label="Anything we should know?" className={compact ? '' : 'sm:col-span-2'}>
+      <Field label="Anything we should know?" className={full}>
         <textarea name="message" rows={3} value={v.message ?? ''} onChange={set('message')} className="field resize-y" />
       </Field>
-      <label data-ai="off" className={`flex items-start gap-2.5 text-[13px] text-white/65 ${compact ? '' : 'sm:col-span-2'}`}>
+      {waNumber && (
+        <div className={full}>
+          <span className="label">Message we&apos;ll open in WhatsApp</span>
+          <pre dir="auto" className="mt-1 whitespace-pre-wrap rounded-xl border border-[#25D366]/25 bg-[#25D366]/[0.06] px-3.5 py-3 font-sans text-[13px] leading-relaxed text-white/80">
+            {message}
+          </pre>
+        </div>
+      )}
+      <label data-ai="off" className={`flex items-start gap-2.5 text-[13px] text-white/65 ${full}`}>
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[rgb(var(--brand-2))]" />
         I agree that {ws.brand.name} may contact me to arrange this consultation.
       </label>
       {error && (
-        <p className={`rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-[13px] text-red-200 ${compact ? '' : 'sm:col-span-2'}`} role="alert">
+        <p className={`rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-[13px] text-red-200 ${full}`} role="alert">
           {error}
         </p>
       )}
-      <div className={compact ? '' : 'sm:col-span-2'}>
-        <button disabled={busy} className="btn-primary w-full !py-3">
-          <Icon name="calendar" className="h-4 w-4" /> {busy ? 'Requesting…' : 'Request consultation'}
-        </button>
+      <div className={full}>
+        {waNumber ? (
+          <button disabled={busy} className="btn w-full !py-3 bg-[#25D366] text-[#06210f] font-bold hover:brightness-110">
+            <Icon name="whatsapp" className="h-4 w-4" /> {busy ? 'Opening WhatsApp…' : 'Send on WhatsApp'}
+          </button>
+        ) : (
+          <button disabled={busy} className="btn-primary w-full !py-3">
+            <Icon name="calendar" className="h-4 w-4" /> {busy ? 'Requesting…' : 'Request consultation'}
+          </button>
+        )}
       </div>
     </form>
   );

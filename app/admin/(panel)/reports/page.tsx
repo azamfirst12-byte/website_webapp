@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/auth';
 import { getActiveWorkspace } from '@/lib/workspace';
-import { byService, bySource, byStage, channelComparison, intents, kpis, repPerformance, topPages, topSections, trafficSources, trends, voiceCommands } from '@/lib/analytics';
+import { byService, bySource, byStage, channelComparison, intents, kpis, repPerformance, topPages, topSections, trafficSources, trends, voiceCommands, wonLostTrend } from '@/lib/analytics';
 import { parseReportFilters, RANGES } from '@/lib/report-filters';
 import { duration, labelize, money, pct } from '@/lib/format';
 import { can } from '@/lib/permissions';
@@ -13,6 +13,8 @@ export const metadata = { title: 'Reports' };
 
 type SP = Record<string, string | undefined>;
 const p100 = (x: number) => `${Math.round(x * 1000) / 10}%`;
+// Literal colors: SERIES comes from a 'use client' module, so it isn't a real array inside this server component.
+const LINE = { blue: '#3987e5', orange: '#d95926', aqua: '#199e70', yellow: '#c98500' };
 
 export default async function Reports({ searchParams }: { searchParams: Promise<SP> }) {
   const session = await requireAdmin('reports.view');
@@ -21,7 +23,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
   const f = parseReportFilters(sp);
   const c = ws.config;
   const cur = c.pricing.currency;
-  const [k, t, svc, src, stages, it, cmds, ch, traffic, pages, sections, reps] = await Promise.all([
+  const [k, t, svc, src, stages, it, cmds, ch, traffic, pages, sections, reps, wl] = await Promise.all([
     kpis(ws, f),
     trends(ws, f),
     byService(ws, f),
@@ -34,6 +36,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
     topPages(ws, f),
     topSections(ws, f),
     repPerformance(ws, f),
+    wonLostTrend(ws, f),
   ]);
   const exportQs = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]).toString();
   const labelMode = t.bucket === 'month' ? 'month' : 'day';
@@ -155,18 +158,19 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
             labelMode={labelMode}
             labels={t.labels}
             series={[
-              { name: 'Leads', values: t.leads, color: SERIES[0] },
-              { name: 'Qualified', values: t.qualified, color: SERIES[2] },
-              { name: 'Won', values: t.won, color: SERIES[3] },
+              { name: 'Leads', values: t.leads, color: LINE.blue },
+              { name: 'Qualified', values: t.qualified, color: LINE.aqua },
+              { name: 'Won', values: t.won, color: LINE.yellow },
             ]}
           />
         </Panel>
         <Panel title="Won vs lost" subtitle="Leads created in the period">
-          <Donut
-            centerLabel="closed"
-            data={[
-              { label: 'won', n: k.won },
-              { label: 'lost', n: k.lost },
+          <LineChart
+            labelMode={labelMode}
+            labels={wl.labels}
+            series={[
+              { name: 'Won', values: wl.won, color: LINE.aqua },
+              { name: 'Lost', values: wl.lost, color: LINE.orange },
             ]}
           />
           <div className="mt-4 border-t border-white/[0.06] pt-4">

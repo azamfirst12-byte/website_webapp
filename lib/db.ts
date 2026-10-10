@@ -14,7 +14,7 @@ type Sql = postgres.Sql<Record<string, never>>;
 type Tx = postgres.TransactionSql<Record<string, never>>;
 type Runner = Sql | Tx;
 
-const g = globalThis as unknown as { __wwsql?: Sql; __wwready?: Promise<void>; __wwurl?: string };
+const g = globalThis as unknown as { __wwsql?: Sql; __wwready?: Promise<void>; __wwurl?: string; __wwjsonfix?: Promise<void> };
 
 /** "ep-abc-pooler.region.aws.neon.tech/website_webapp" — for logs, never the password. */
 export function describeUrl(url: string) {
@@ -62,10 +62,49 @@ function client(): Sql {
   return g.__wwsql;
 }
 
-/** Convert `?` placeholders to $1..$n (our SQL never uses a literal ?). */
+/**
+ * Convert `?` placeholders to $1..$n (our SQL never uses a literal ?).
+ * `?::jsonb` becomes `$n::text::jsonb`: callers pass JSON.stringify(...) text, and without the text cast
+ * postgres.js sees a jsonb parameter and JSON-encodes that text a second time (storing a JSON *string*).
+ */
 function toPg(text: string) {
   let n = 0;
-  return text.replace(/\?/g, () => `$${++n}`);
+  return text.replace(/\?(::jsonb\b)?/g, (_m, jsonb?: string) => `$${++n}${jsonb ? '::text::jsonb' : ''}`);
+}
+
+/** jsonb columns that older versions stored double-encoded (as a JSON string holding the real JSON). */
+const JSON_COLUMNS: [string, string][] = [
+  ['settings', 'value'],
+  ['workspaces', 'config'],
+  ['workspace_versions', 'config'],
+  ['conversations', 'transcript'],
+  ['conversations', 'summary'],
+  ['leads', 'score_breakdown'],
+  ['leads', 'tags'],
+  ['leads', 'custom'],
+  ['activities', 'meta'],
+  ['events', 'meta'],
+];
+const JSON_FIX_KEY = 'json_fix_v1';
+
+/** One-time repair: decode double-encoded jsonb values in place (values that aren't valid JSON text are left alone). */
+async function repairDoubleEncodedJson(sql: Sql) {
+  const [done] = await sql.unsafe(`SELECT 1 AS ok FROM settings WHERE key = '${JSON_FIX_KEY}'`);
+  if (done) return;
+  await sql.begin(async (tx) => {
+    await tx.unsafe('SELECT pg_advisory_xact_lock(727274)');
+    const [again] = await tx.unsafe(`SELECT 1 AS ok FROM settings WHERE key = '${JSON_FIX_KEY}'`);
+    if (again) return;
+    await tx.unsafe(`CREATE OR REPLACE FUNCTION pg_temp.ww_unwrap_json(v jsonb) RETURNS jsonb LANGUAGE plpgsql AS $f$
+      BEGIN
+        IF v IS NULL OR jsonb_typeof(v) <> 'string' THEN RETURN v; END IF;
+        BEGIN RETURN (v #>> '{}')::jsonb; EXCEPTION WHEN others THEN RETURN v; END;
+      END $f$`);
+    for (const [table, col] of JSON_COLUMNS) {
+      await tx.unsafe(`UPDATE ${table} SET ${col} = pg_temp.ww_unwrap_json(${col}) WHERE jsonb_typeof(${col}) = 'string' AND ltrim(${col} #>> '{}') ~ '^[\\[{"]'`);
+    }
+    await tx.unsafe(`INSERT INTO settings (key, value) VALUES ('${JSON_FIX_KEY}', 'true'::jsonb) ON CONFLICT (key) DO NOTHING`);
+  });
 }
 
 /** Bump when lib/schema.ts changes, so existing databases get the new tables/indexes. */
@@ -76,6 +115,14 @@ const SCHEMA_VERSION = 'ww-schema-1';
  * (the schema version stored as a table comment); the full setup only runs on a new/old database.
  */
 function ready(): Promise<void> {
+  return schemaReady().then(() => {
+    // Runs once per process after the schema is in place (a settings flag makes it a no-op afterwards).
+    g.__wwjsonfix ??= repairDoubleEncodedJson(client()).catch((e) => console.error('[db] JSON repair skipped:', (e as Error).message));
+    return g.__wwjsonfix;
+  });
+}
+
+function schemaReady(): Promise<void> {
   if (!g.__wwready) {
     g.__wwready = (async () => {
       const sql = client();

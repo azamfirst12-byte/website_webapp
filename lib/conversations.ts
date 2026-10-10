@@ -8,7 +8,7 @@ import { track } from './events';
 import { getWorkspace, type Workspace } from './workspace';
 import { INTENT_CATEGORIES } from './workspace-types';
 
-export const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash';
+export const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || 'gemini-3.8-flash';
 
 export interface TranscriptLine {
   role: 'user' | 'ai' | 'action';
@@ -72,8 +72,43 @@ export async function createConversation(ws: Workspace, visitorId: string, chann
   return id;
 }
 
+/** Older rows may hold transcript/summary as a JSON-encoded string instead of real JSON — decode them. */
+function decodeJson<T>(v: unknown, fallback: T): T {
+  if (typeof v !== 'string') return (v ?? fallback) as T;
+  try {
+    return JSON.parse(v) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+let repaired: Promise<void> | null = null;
+/** One-time (per process) repair of rows whose transcript/summary was stored as a JSON string scalar. */
+function repairStringJson() {
+  repaired ??= (async () => {
+    try {
+      await exec(
+        `UPDATE conversations SET transcript = (transcript #>> '{}')::jsonb
+         WHERE jsonb_typeof(transcript) = 'string' AND left(ltrim(transcript #>> '{}'), 1) = '['`,
+      );
+      await exec(
+        `UPDATE conversations SET summary = (summary #>> '{}')::jsonb
+         WHERE jsonb_typeof(summary) = 'string' AND left(ltrim(summary #>> '{}'), 1) = '{'`,
+      );
+    } catch (e) {
+      console.error('[conversations] JSON repair skipped:', e);
+    }
+  })();
+  return repaired;
+}
+
 export async function getConversation(id: string) {
-  return one<Conversation>(`SELECT * FROM conversations WHERE id=?`, [id]);
+  const c = await one<Conversation>(`SELECT * FROM conversations WHERE id=?`, [id]);
+  if (!c) return c;
+  const t = decodeJson<unknown>(c.transcript, []);
+  c.transcript = Array.isArray(t) ? (t as TranscriptLine[]) : [];
+  c.summary = decodeJson<ConversationSummary | null>(c.summary, null);
+  return c;
 }
 
 const cleanTranscript = (t: unknown): TranscriptLine[] =>
@@ -86,7 +121,7 @@ const cleanTranscript = (t: unknown): TranscriptLine[] =>
 export async function syncTranscript(id: string, transcript: unknown) {
   const t = cleanTranscript(transcript);
   const turns = t.filter((m) => m.role === 'user').length;
-  await exec(`UPDATE conversations SET transcript=?::jsonb, turn_count=?, last_activity_at=? WHERE id=? AND status='open'`, [JSON.stringify(t), turns, Date.now(), id]);
+  await exec(`UPDATE conversations SET transcript=?::text::jsonb, turn_count=?, last_activity_at=? WHERE id=? AND status='open'`, [JSON.stringify(t), turns, Date.now(), id]);
 }
 
 export async function countAction(id: string, ok: boolean) {
@@ -166,7 +201,7 @@ export async function summarizeConversation(id: string) {
   const booked = !!(await one(`SELECT 1 FROM appointments WHERE conversation_id=?`, [id]));
   const outcome = c.handoff ? 'handoff' : booked ? 'booking_requested' : c.lead_id ? 'lead_captured' : s.outcome || 'information';
   const success = ['lead_captured', 'booking_requested', 'handoff'].includes(outcome) || (s.sentiment !== 'negative' && userTurns >= 2 && c.failed_actions <= c.action_count / 2);
-  await exec(`UPDATE conversations SET summary=?::jsonb, intent=?, intent_category=COALESCE(intent_category, ?), outcome=?, success=?, language=COALESCE(?, language) WHERE id=?`, [
+  await exec(`UPDATE conversations SET summary=?::text::jsonb, intent=?, intent_category=COALESCE(intent_category, ?), outcome=?, success=?, language=COALESCE(?, language) WHERE id=?`, [
     JSON.stringify(s),
     s.intent?.slice(0, 300) ?? null,
     cat,
@@ -254,10 +289,11 @@ export async function listConversations(ws: Workspace, f: { channel?: string; ou
   if (f.q) where.push(`(c.intent ILIKE ? OR c.transcript::text ILIKE ? OR l.name ILIKE ?)`), params.push(`%${f.q}%`, `%${f.q}%`, `%${f.q}%`);
   if (f.leadVisibleTo) where.push(`(c.lead_id IS NULL OR ${f.leadVisibleTo.sql})`), params.push(...f.leadVisibleTo.params);
   const page = Math.max(1, f.page ?? 1);
+  await repairStringJson();
   const rows = await q<Omit<Conversation, 'transcript'> & { lead_name: string | null; first_message: string | null }>(
     `SELECT c.id, c.workspace_id, c.visitor_id, c.lead_id, c.channel, c.status, c.started_at, c.last_activity_at, c.ended_at, c.turn_count, c.action_count,
             c.failed_actions, c.summary, c.intent, c.intent_category, c.outcome, c.success, c.handoff, c.language, c.entry_path, c.is_demo,
-            l.name AS lead_name, (SELECT x->>'text' FROM jsonb_array_elements(c.transcript) x WHERE x->>'role' = 'user' LIMIT 1) AS first_message
+            l.name AS lead_name, (SELECT x->>'text' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(c.transcript) = 'array' THEN c.transcript ELSE '[]'::jsonb END) x WHERE x->>'role' = 'user' LIMIT 1) AS first_message
      FROM conversations c LEFT JOIN leads l ON l.id = c.lead_id
      WHERE ${where.join(' AND ')} ORDER BY c.started_at DESC LIMIT ? OFFSET ?`,
     [...params, pageSize, (page - 1) * pageSize],

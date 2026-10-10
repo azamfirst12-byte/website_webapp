@@ -234,6 +234,33 @@ export async function trends(ws: Workspace, f: ReportFilters) {
   return { labels, bucket, ...out };
 }
 
+/** Won vs lost over time — leads created in the period, bucketed by created_at, by their current stage. */
+export async function wonLostTrend(ws: Workspace, f: ReportFilters) {
+  const tz = tzName();
+  const days = (f.to - f.from) / 86_400_000;
+  const bucket = f.bucket ?? (days > 120 ? 'month' : days > 45 ? 'week' : 'day');
+  const lw = leadWhere(ws, f);
+  const won = ws.config.crm.stages.filter((s) => s.kind === 'won').map((s) => s.key);
+  const lost = ws.config.crm.stages.filter((s) => s.kind === 'lost').map((s) => s.key);
+  const rows = await q<{ b: string; won: number; lost: number }>(
+    `SELECT ${bucketSql('l.created_at', bucket).replace(/\$TZ/g, '?::text')} AS b,
+            COUNT(*) FILTER (WHERE l.stage = ANY(?::text[])) AS won,
+            COUNT(*) FILTER (WHERE l.stage = ANY(?::text[])) AS lost
+     FROM leads l WHERE ${lw.sql} GROUP BY 1`,
+    [tz, `{${won.join(',')}}`, `{${lost.join(',')}}`, ...lw.params],
+  );
+  const labels = buckets(f.from, f.to, bucket, tz);
+  const idx = new Map(labels.map((l, i) => [l, i]));
+  const out = { won: new Array<number>(labels.length).fill(0), lost: new Array<number>(labels.length).fill(0) };
+  for (const r of rows) {
+    const i = idx.get(r.b);
+    if (i === undefined) continue;
+    out.won[i] += num(r.won);
+    out.lost[i] += num(r.lost);
+  }
+  return { labels, bucket, ...out };
+}
+
 export async function byService(ws: Workspace, f: ReportFilters) {
   const lw = leadWhere(ws, { ...f, service: undefined });
   const won = ws.config.crm.stages.filter((s) => s.kind === 'won').map((s) => s.key);

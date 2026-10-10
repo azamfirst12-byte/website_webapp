@@ -67,9 +67,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <LineChart
             labels={t.labels}
             series={[
-              { name: 'Leads', values: t.leads, color: SERIES[0] },
-              { name: 'Voice conversations', values: t.voice, color: SERIES[2] },
-              { name: 'Text conversations', values: t.text, color: SERIES[1] },
+              { name: 'Leads', values: t.leads, color: '#3987e5' },
+              { name: 'Voice conversations', values: t.voice, color: '#199e70' },
+              { name: 'Text conversations', values: t.text, color: '#d95926' },
             ]}
           />
         </Panel>
